@@ -172,3 +172,5 @@ cython_debug/
 trl-doc-uploader-ca4496d60409.json
 TRL/
 *toml
+Test_Google_Drive.ipynb
+*.json

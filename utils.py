@@ -655,3 +655,63 @@ def update_observation(df: pd.DataFrame, file_name: str, email: str) -> tuple[st
     new_data = pd.DataFrame([[file_name, email, "Process"]], columns=['file_name', 'email', 'status'])
     df = pd.concat([df, new_data], ignore_index=True)
     return "Aceptado: Nuevo Registro.", df
+
+import smtplib
+import os
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+
+def send_email(sender_email, sender_password, recipient_email, subject, body, attachment_path=None):
+    """
+    Sends an email with an optional attachment via Gmail SMTP.
+
+    Parameters:
+    sender_email (str): Sender's Gmail address.
+    sender_password (str): App Password for the sender's Gmail account.
+    recipient_email (str): Recipient's email address.
+    subject (str): Email subject.
+    body (str): Email body content.
+    attachment_path (str, optional): Path to the file to attach. Defaults to None.
+
+    Returns:
+    bool: True if email sent successfully, False otherwise.
+    """
+
+    try:
+        # 📨 Create Email Object
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+
+        # 📌 Attach Email Body
+        msg.attach(MIMEText(body, "plain"))
+
+        # 📎 Attach File if Provided
+        if attachment_path and os.path.exists(attachment_path):
+            filename = os.path.basename(attachment_path)
+            with open(attachment_path, "rb") as attachment:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(attachment.read())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", f"attachment; filename={filename}")
+                msg.attach(part)
+        elif attachment_path:
+            print(f"⚠️ File not found: {attachment_path}")
+            return False
+
+        # 📤 Send Email
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()  # Secure connection
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, recipient_email, msg.as_string())
+        server.quit()
+
+        print("✅ Email sent successfully.")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error sending email: {e}")
+        return False

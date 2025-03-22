@@ -9,6 +9,8 @@ FOLDER_ID = st.secrets["google"]
 #CREDENTIALS = "trl-doc-uploader-ca4496d60409.json"
 CREDENTIALS = dict(st.secrets["gcp_service_account"])
 
+PASSWORD = str(st.secrets["app"]["password"])
+
 # Retry Authentication
 def authenticate_with_retries(max_retries=3):
     for attempt in range(1, max_retries + 1):

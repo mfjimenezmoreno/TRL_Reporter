@@ -632,11 +632,11 @@ def is_valid_email(email: str) -> bool:
     email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     return bool(re.match(email_regex, email))
 
-def is_valid_password(password: str) -> bool:
+def is_valid_password(password: str, real: str) -> bool:
     """
     Validates possword.
     """
-    return password == "CIDiTec2025"
+    return password == real
 
 def update_observation(df: pd.DataFrame, file_name: str, email: str) -> tuple[str, pd.DataFrame]:
     # Check if email exists in the dataframe

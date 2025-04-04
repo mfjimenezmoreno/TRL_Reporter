@@ -44,7 +44,7 @@ password = st.text_input("Contraseña", type="password")
 file = st.file_uploader("Elija un archivo PDF", type=["pdf"])
 
 valid_email = is_valid_email(email)
-valid_password = is_valid_password(password)
+valid_password = is_valid_password(password, PASSWORD)
 
 # Submit button
 if st.button("⬆️ Upload"):
@@ -62,8 +62,7 @@ if st.button("⬆️ Upload"):
         #date = datetime.today().strftime("%d_%m_%Y")
         # Upload file
         try:
-            #file_id = st.session_state.gdrive.upload_file(temp_file_path, file_name=f'{name}.pdf', folder_id=FOLDER_ID["DocsOrig_id"])
-            #st.session_state.gdrive.list_files_in_shared_drive(FOLDER_ID["DocsToProcess_id"])
+            # ☁️ Read the folder
             workListFile = st.session_state.gdrive.read_csv_from_drive(file_name="workListFile.csv", folder_id=FOLDER_ID["DocsToProcess_id"])
             print("🐢")
             print(workListFile)

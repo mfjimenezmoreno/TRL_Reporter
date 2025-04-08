@@ -86,6 +86,33 @@ class GoogleDriveFolder:
             logging.error(f"Error creating folder '{folder_name}': {e}")
             return None
 
+    def create_folder_if_not_exists(self, folder_name, parent_folder_id):
+        """
+        Checks if a folder with the given name exists inside the specified parent folder.
+        If not, it creates it. Returns the folder ID.
+        """
+        try:
+            # 🔍 Search for the folder
+            query = f"title = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '{parent_folder_id}' in parents"
+            file_list = self.drive.ListFile({'q': query}).GetList()
+
+            if file_list:
+                folder_id = file_list[0]['id']
+                logging.info(f"Folder '{folder_name}' already exists with ID: {folder_id}")
+                return folder_id
+
+            # 📁 Create if not found
+            previous_folder_id = self.folder_id  # Save current context
+            self.folder_id = parent_folder_id    # Temporarily switch context
+            folder_id = self.create_folder(folder_name)
+            self.folder_id = previous_folder_id  # Restore context
+
+            return folder_id
+
+        except Exception as e:
+            logging.error(f"Error checking/creating folder '{folder_name}': {e}")
+            return None
+
     def upload_file(self, file_path:str, file_name:str, folder_id:str):
         """
         Uploads a file to Google Drive, enforcing overwrite if the file already exists.
@@ -179,6 +206,43 @@ class GoogleDriveFolder:
             logging.error(f"Error uploading file '{file_name}': {e}")
             return None
 
+    def upload_folder(self, folder_path: str, destination_folder_id: str) -> list[str]:
+        """
+        Uploads all files from a local folder to a Google Drive folder.
+        :param folder_path: Local path to the folder.
+        :param destination_folder_id: Google Drive folder ID.
+        :return: List of uploaded file IDs.
+        """
+        uploaded_ids = []
+        for file_name in os.listdir(folder_path):
+            full_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(full_path):
+                file_id = self.upload_file(full_path, file_name, destination_folder_id)
+                if file_id:
+                    uploaded_ids.append(file_id)
+        return uploaded_ids
+    
+    def update_observations_bulk(df: pd.DataFrame, file_email_pairs: list[tuple[str, str]]) -> tuple[str, pd.DataFrame]:
+        """
+        Updates observation DataFrame with multiple (file_name, email) pairs.
+        Allows multiple entries per user.
+
+        :param df: Existing observations DataFrame.
+        :param file_email_pairs: List of tuples like (file_name, email).
+        :return: Status message and updated DataFrame.
+        """
+        for file_name, email in file_email_pairs:
+            new_row = pd.DataFrame([[file_name, email, "Process"]], columns=['file_name', 'email', 'status'])
+            df = pd.concat([df, new_row], ignore_index=True)
+
+        return f"Aceptado: {len(file_email_pairs)} registros agregados.", df
+    
+    def delete_existing_files(self, file_name: str, folder_id: str):
+        query = f"title = '{file_name}' and mimeType != 'application/vnd.google-apps.folder' and '{folder_id}' in parents"
+        existing_files = self.drive.ListFile({'q': query}).GetList()
+        for f in existing_files:
+            logging.info(f"Deleting existing file: {f['title']}")
+            f.Delete()
 
     def get_or_create_folder(self, user_name):
         """
@@ -621,6 +685,39 @@ class GoogleDriveFolder:
         except Exception as e:
             logging.error(f"Error extracting text from '{pdf_path}': {e}")
             raise
+        
+    def delete_user_folder_if_exists(self, parent_folder_id: str, user_folder_name: str) -> None:
+        """
+        Deletes the user's folder and all its contents from Google Drive if it exists.
+
+        :param gdrive: An instance of GoogleDriveFolder (already authenticated).
+        :param parent_folder_id: The ID of the parent folder (e.g., DocsOrig_id or DocsToProcess_id).
+        :param user_folder_name: The name of the user's folder (e.g., derived from email).
+        """
+        try:
+            # List all folders under the parent
+            file_list = self.drive.ListFile({
+                'q': f"'{parent_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            }).GetList()
+
+            # Find the folder with the matching name
+            for folder in file_list:
+                if folder['title'] == user_folder_name:
+                    # If found, list all its contents and delete them
+                    contents = self.drive.ListFile({
+                        'q': f"'{folder['id']}' in parents and trashed=false"
+                    }).GetList()
+
+                    for item in contents:
+                        item.Delete()
+
+                    # Delete the folder itself
+                    folder.Delete()
+                    logging.info(f"Deleted existing folder '{user_folder_name}' and its contents.")
+                    return
+
+        except Exception as e:
+            logging.error(f"Error while cleaning up folder '{user_folder_name}': {e}")
 
 
 def is_valid_email(email: str) -> bool:
@@ -652,9 +749,11 @@ def update_observation(df: pd.DataFrame, file_name: str, email: str) -> tuple[st
         return "Aceptado: Sobre-Escritura.", df
 
     # If email doesn't exist, create a new observation with 'Process'
-    new_data = pd.DataFrame([[file_name, email, "Process"]], columns=['file_name', 'email', 'status'])
+    new_data = pd.DataFrame([[file_name, email, "Process", "Pending"]], columns=['file_name', 'email', 'status', 'sent_email'])
     df = pd.concat([df, new_data], ignore_index=True)
     return "Aceptado: Nuevo Registro.", df
+
+
 
 import smtplib
 import os

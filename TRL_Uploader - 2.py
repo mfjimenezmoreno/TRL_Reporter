@@ -93,31 +93,68 @@ if st.button("⬆️ Upload"):
         
         try:
             # ☁️ Read workListFile
-            workListFile = st.session_state.gdrive.read_csv_from_drive(file_name="workListFile.csv", folder_id=FOLDER_ID["DocsToProcess_id"])
+            workListFile = st.session_state.gdrive.read_csv_from_drive(
+                file_name="workListFile.csv", folder_id=FOLDER_ID["DocsToProcess_id"]
+                )
+            
+            # Determine if cleanup is needed
+            existing_record = workListFile[workListFile["email"] == email]
+            cleanup_required = not existing_record.empty and existing_record["status"].iloc[0] != "Ready"
+            
+            if cleanup_required:
+                # 🧹 Clean previous uploads (only if not marked as 'Ready')
+                st.session_state.gdrive.delete_user_folder_if_exists(FOLDER_ID["DocsOrig_id"], name)
+                st.session_state.gdrive.delete_user_folder_if_exists(FOLDER_ID["DocsToProcess_id"], name)
+            
+            # Check if user's folder already exists, otherwise create it
+            user_folder_id = st.session_state.gdrive.create_folder_if_not_exists(
+                folder_name=name, parent_folder_id=FOLDER_ID["DocsOrig_id"]
+            )
+            user_folder_txts = st.session_state.gdrive.create_folder_if_not_exists(
+                folder_name=name, parent_folder_id=FOLDER_ID["DocsToProcess_id"]
+            )
+                
+            
+            # Track if at least one successful upload occurs
+            successful_uploads = False
             
             for file in files:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
                     temp_file.write(file.getbuffer())
                     temp_file_path = temp_file.name
-            
-            status, workListFile = update_observation(workListFile, f"{name}_{file.name}.txt", email)
-
-            if status == "Negado: Servicio ya provisto.":
-                st.error(f"❌ Ya se brindó el servicio a la cuenta: {email}")
-            else:
-                file_id = st.session_state.gdrive.upload_file(temp_file_path, file_name=f'{name}_{file.name}', folder_id=FOLDER_ID["DocsOrig_id"])
-                txt_id = st.session_state.gdrive.extract_text_and_upload(temp_file_path, file_name=f'{name}_{file.name}.txt', folder_id=FOLDER_ID["DocsToProcess_id"])
-                csv_id = st.session_state.gdrive.update_csv_from_df_retry(workListFile, file_name="workListFile.csv", folder_id=FOLDER_ID["DocsToProcess_id"])
-
-                # Store uploaded files in session state
-                st.session_state.uploaded_files.append(file.name)
                 
-                st.success(f"✅ {file.name}: {status.replace('Aceptado: ', '')}! Documentos subidos. Archivo ID: {file_id}, CSV ID: {csv_id}")
+                final_filename = f"{name}_{file.name}"
+                txt_filename = f"{final_filename}.txt"
+                
+                status, workListFile = update_observation(workListFile, txt_filename, email)
+
+                if status == "Negado: Servicio ya provisto.":
+                    st.error(f"❌ Ya se brindó el servicio a la cuenta: {email}")
+                else:
+                    file_id = st.session_state.gdrive.upload_file(
+                        temp_file_path, file_name=final_filename, folder_id=user_folder_id
+                        )
+                    txt_id = st.session_state.gdrive.extract_text_and_upload(
+                        temp_file_path, file_name=final_filename, folder_id=user_folder_txts
+                        )
+                    # Store uploaded files in session state
+                    st.session_state.uploaded_files.append(file.name)
+                    st.success(f"✅ {file.name} cargado correctamente.")
+                    successful_uploads = True
             
+            if successful_uploads:
+                csv_id = st.session_state.gdrive.update_csv_from_df_retry(
+                    workListFile, file_name="workListFile.csv", folder_id=FOLDER_ID["DocsToProcess_id"]
+                    )
+                st.info("📄 Base de datos actualizado correctamente.")
+
+                
         except Exception as e:
             st.error(f"❌ Error al cargar: {e}")
 
-# 📂 Show Previously Uploaded Files
+# ========================================
+# 📜 Show Previously Uploaded Files
+# ========================================
 if st.session_state.uploaded_files:
     st.subheader("📜 Archivos Subidos")
     st.write(", ".join(st.session_state.uploaded_files))
